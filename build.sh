@@ -21,8 +21,8 @@ function build_ncurses() {
     cd /build
 
     # Download
-    curl -LO http://invisible-island.net/datafiles/release/ncurses.tar.gz
-    tar zxvf ncurses.tar.gz
+    curl -LO ftp://invisible-island.net/ncurses/ncurses-${NCURSES_VERSION}.tar.gz
+    tar zxvf ncurses-${NCURSES_VERSION}.tar.gz
     cd ncurses-${NCURSES_VERSION}
 
     # Build
@@ -38,16 +38,14 @@ function build_readline() {
     curl -LO ftp://ftp.cwru.edu/pub/bash/readline-${READLINE_VERSION}.tar.gz
     tar xzvf readline-${READLINE_VERSION}.tar.gz
     cd readline-${READLINE_VERSION}
+    ln -s /build/readline-${READLINE_VERSION} /build/readline
 
     # Build
-    CC='/usr/local/musl/bin/musl-gcc -static' CFLAGS='-fPIC' ./configure \
-        --disable-shared \
-        --enable-static
+    CC='/usr/local/musl/bin/musl-gcc -static' \
+        CFLAGS='-fPIC' \
+        ./configure --disable-shared --enable-static
     make -j4
-
-    # Note that socat looks for readline in <readline/readline.h>, so we need
-    # that directory to exist.
-    ln -s /build/readline-${READLINE_VERSION} /build/readline
+    make install-static
 }
 
 function build_openssl() {
@@ -59,12 +57,12 @@ function build_openssl() {
     cd openssl-${OPENSSL_VERSION}
 
     # Configure
-    CC='/usr/local/musl/bin/musl-gcc -static' ./Configure no-shared --prefix=$PREFIX --openssldir=$PREFIX/ssl no-zlib linux-x86_64 -fPIC
+    CC='/usr/local/musl/bin/musl-gcc -static' \
+        CFLAGS='-fPIC' \
+        ./Configure no-shared linux-x86_64
 
     # Build
-    make depend 2> /dev/null
-    make -j$(nproc)
-    make install
+    make -j4
     echo "** Finished building OpenSSL"
 }
 
@@ -80,9 +78,9 @@ function build_socat() {
     # NOTE: `NETDB_INTERNAL` is non-POSIX, and thus not defined by MUSL.
     # We define it this way manually.
     CC='/usr/local/musl/bin/musl-gcc -static' \
-        CFLAGS='-fPIC' \
-        CPPFLAGS='-I/build -I/$PREFIX/include -DNETDB_INTERNAL=-1' \
-        LDFLAGS="-L/build/readline-${READLINE_VERSION} -L/build/ncurses-${NCURSES_VERSION}/lib -L/$PREFIX/lib" \
+        CFLAGS="-fPIC -DWITH_OPENSSL -I/build -I/build/openssl-${OPENSSL_VERSION}/include -I/build/readline-${READLINE_VERSION} -DNETDB_INTERNAL=-1" \
+        CPPFLAGS="-DWITH_OPENSSL -I/build -I/build/openssl-${OPENSSL_VERSION}/include -I/build/readline -DNETDB_INTERNAL=-1" \
+        LDFLAGS="-L/build/readline -L/build/ncurses-${NCURSES_VERSION}/lib -L/build/openssl-${OPENSSL_VERSION}" \
         ./configure
     make -j4
     strip socat
